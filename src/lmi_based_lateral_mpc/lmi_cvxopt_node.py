@@ -2,7 +2,7 @@
 
 import rospy
 import numpy as np
-from lmi_based_lateral_mpc.lmi_cvxpy import LMIMPCControl
+from lmi_based_lateral_mpc.lmi_cvxopt import LMIMPCControl
 
 def main():
    rospy.init_node('lmi_based_lateral_mpc_node')

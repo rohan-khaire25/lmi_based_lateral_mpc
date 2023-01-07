@@ -162,7 +162,9 @@ include_directories(
 ## in contrast to setup.py, you can choose the destination
 catkin_install_python(PROGRAMS
   src/lmi_based_lateral_mpc/lmi_cvxpy_node.py
-  src/lmi_based_lateral_mpc/mpclmi_test.py
+  src/lmi_based_lateral_mpc/lmi_cvxopt_node.py
+  src/lmi_based_lateral_mpc/lmi_cvxpy.py
+  src/lmi_based_lateral_mpc/lmi_cvxopt.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
