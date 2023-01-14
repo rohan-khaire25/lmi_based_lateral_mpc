@@ -70,13 +70,6 @@ class LMIMPCControl():
         self.control_command_publisher.publish(cmd)     
 
     def traj_tracking_states(self, data):
-        """
-        Stores the ackermann drive message for the next controller calculation
-
-        :param ros_ackermann_drive: the current ackermann control input
-        :type ros_ackermann_drive: ackermann_msgs.AckermannDrive
-        :return:
-        """
         self.received_inputs = True
         # set init state
         self.x = np.matrix([[data.data[5]], [data.data[8]]])
