@@ -17,7 +17,7 @@ class LMIMPCControl():
         self.wheelbase_ = 3.22
 
         # Time step
-        self.dt = 0.03
+        self.dt = 0.1
         # Initializing Variables
         self.G = cp.Variable((2,2), symmetric=True)
         self.Y = cp.Variable((1,2))
@@ -33,10 +33,10 @@ class LMIMPCControl():
         # Set weight matrix
         #self.Q = np.eye(2)*50
         self.Q = np.matrix([[250, 0],[0, 125]])
-        self.R = np.eye(1)*30
+        self.R = np.eye(1)*175
 
         # input constraint
-        self.u_max = 35.0
+        self.u_max = 0.61
 
         # data subscriber
         self.state_subscriber = rospy.Subscriber("/mpc_follower/debug/debug_values", Float64MultiArray, self.traj_tracking_states, queue_size=1)
@@ -82,26 +82,28 @@ class LMIMPCControl():
         self.x = np.matrix([[data.data[5]], [data.data[8]]])
         self.curr_vel = max(data.data[10], 0.1)
         self.cmd_vel = data.data[9]
+        self.cmd_vel_new = 2.75
         self.curvature_ = data.data[14]
-        if np.abs(self.curvature_) < 0.0001:
-            self.curvature_ = 0.01
+        #if np.abs(self.curvature_) < 0.0001:
+        #    self.curvature_ = 0.01
         
 
     def update_controls(self): 
             
         if (self.received_inputs == True):
             if (self.formulate_vehicle_model == False):
-                self.delta_r = atan(self.wheelbase_ * self.curvature_)
+                #self.delta_r = atan(self.wheelbase_ * self.curvature_)
+                self.delta_r = 0.1
                 # Kinematic Bicycle model
-                A_k = np.eye(2) + np.matrix([[0, self.curr_vel], [0, 0]])*self.dt
-                B_k = np.matrix([[0], [self.curr_vel/(self.wheelbase_*cos(self.delta_r)*cos(self.delta_r))]])*self.dt
-                W_k =  np.matrix([[0, 0], [-self.curr_vel/(self.delta_r*self.wheelbase_*cos(self.delta_r)*cos(self.delta_r)), -self.curr_vel/(self.delta_r*self.wheelbase_*cos(self.delta_r)*cos(self.delta_r))]])*self.dt
+                A_k = np.eye(2) + np.matrix([[0, self.cmd_vel], [0, 0]])*self.dt
+                B_k = np.matrix([[0], [self.cmd_vel/(self.wheelbase_*cos(self.delta_r)*cos(self.delta_r))]])*self.dt
+                W_k =  np.matrix([[0, 0], [0.0, -self.cmd_vel*self.delta_r/(self.wheelbase_*cos(self.delta_r)*cos(self.delta_r))]])*self.dt
     
                 A_k = A_k + W_k
                 # set state propagation matrices
                 self.A = A_k
                 self.B = B_k
-                self.formulate_vehicle_model = True
+                #self.formulate_vehicle_model = True
 
             if (self.formulate_const_LMIs == False):
                 # initializing constant LMIs
@@ -120,7 +122,7 @@ class LMIMPCControl():
                 self.constraints = [X_2 >> 0]
                 self.constraints += [X_3 >> 0] 
 
-                self.formulate_const_LMIs = True  
+                #self.formulate_const_LMIs = True  
                  
             # LMI_1
             X_11 = cp.hstack([np.eye(1), self.x.T])
