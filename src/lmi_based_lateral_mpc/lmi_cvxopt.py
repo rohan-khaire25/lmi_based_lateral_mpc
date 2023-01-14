@@ -19,7 +19,7 @@ class LMIMPCControl():
         self.wheelbase_ = 3.22
 
         # Time step
-        self.dt = 0.03
+        self.dt = 0.1
 
         self.formulate_vehicle_model = False
         self.formulate_const_LMIs = False
@@ -27,11 +27,10 @@ class LMIMPCControl():
 
         # Set weight matrix
         #self.Q = np.eye(2)*50
-        self.Q = np.matrix([[12.5, 0],[0, 9.25]])
-        self.R = np.eye(1)*3
-
+        self.Q = np.matrix([[275, 0],[0, 125]])
+        self.R = np.eye(1)*200
         # input constraint
-        self.u_max = 35.0
+        self.u_max = 0.61
 
         # data subscriber
         self.state_subscriber = rospy.Subscriber("/mpc_follower/debug/debug_values", Float64MultiArray, self.traj_tracking_states, queue_size=1)
@@ -65,22 +64,13 @@ class LMIMPCControl():
         self.control_command_publisher.publish(cmd)     
 
     def traj_tracking_states(self, data):
-        """
-        Stores the ackermann drive message for the next controller calculation
-
-        :param ros_ackermann_drive: the current ackermann control input
-        :type ros_ackermann_drive: ackermann_msgs.AckermannDrive
-        :return:
-        """
         self.received_inputs = True
         # set init state
         self.x = Matrix([data.data[5], data.data[8]])
         self.curr_vel = max(data.data[10], 0.1)
-        self.cmd_vel = data.data[9]
-        self.curvature_ = data.data[14]
-        if np.abs(self.curvature_) < 0.001:
-            self.curvature_ = 0.5
-        
+        self.cmd_vel = max(data.data[9], 0.1)
+        self.cmd_vel_new = 2.75
+        self.curvature_ = data.data[14]      
 
     def update_controls(self): 
             
@@ -96,16 +86,17 @@ class LMIMPCControl():
             self.min_obj = self.gamma
             if (self.formulate_vehicle_model == False):
                 self.delta_r = atan(self.wheelbase_ * self.curvature_)
+                #self.delta_r = 0.01
                 # Kinematic Bicycle model
-                A_k = eye(2) + Matrix([[0, self.curr_vel], [0, 0]])*self.dt
-                B_k = Matrix([0, self.curr_vel/self.wheelbase_*cos(self.delta_r)*cos(self.delta_r)])*self.dt
-                W_k = Matrix([[0, 0], [-self.curr_vel/self.delta_r*self.wheelbase_*cos(self.delta_r)*cos(self.delta_r), -self.curr_vel/self.delta_r*self.wheelbase_*cos(self.delta_r)*cos(self.delta_r)]])*self.dt
+                A_k = eye(2) + Matrix([[0, self.cmd_vel], [0, 0]])*self.dt
+                B_k = Matrix([0, self.cmd_vel/(self.wheelbase_*cos(self.delta_r)*cos(self.delta_r))])*self.dt
+                W_k = Matrix([[0, 0], [0.0, -self.cmd_vel*self.delta_r/(self.wheelbase_*cos(self.delta_r)*cos(self.delta_r))]])*self.dt
     
                 A_k = A_k + W_k
                 # set state propagation matrices
                 self.A = A_k
                 self.B = B_k
-                self.formulate_vehicle_model = True
+                #self.formulate_vehicle_model = True
 
             if (self.formulate_const_LMIs == False):
                 # initializing constant LMIs
@@ -125,7 +116,7 @@ class LMIMPCControl():
 
                 self.X_3 = LMI_PSD(M3)
 
-                self.formulate_const_LMIs = True  
+                #self.formulate_const_LMIs = True  
                  
             # LMI_1
             M = Matrix.vstack(
@@ -137,7 +128,6 @@ class LMIMPCControl():
             solvers.options['show_progress'] = False
             c, Gs, hs = to_cvxopt(self.gamma, [X_1, self.X_2, self.X_3, self.X_G], self.variables)
             sol = solvers.sdp(c, Gs=Gs, hs=hs, solver='dsdp')
-            print(self.curvature_)
             print(sol['status'])
             if sol['status'] not in ["primal infeasible", "unbounded", "unknown"]:
                 print(self.x)
@@ -152,7 +142,8 @@ class LMIMPCControl():
                 K = np.matmul(Y_val, np.linalg.inv(G_val))
                 u = np.matmul(K,self.x)
                 u_val = u[0,0]
-
+                print(u_val)
+                print(self.A)
                 omega_cmd = self.curr_vel * atan(u_val) / self.wheelbase_
                 # publishing twist and control cmd
                 self.publishTwist(self.cmd_vel, omega_cmd)
