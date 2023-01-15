@@ -4,6 +4,7 @@ import rospy
 from math import cos, atan
 import numpy as np
 import cvxpy as cp
+import time
 from scipy.linalg import fractional_matrix_power
 from std_msgs.msg import Float64MultiArray, Header
 from geometry_msgs.msg import TwistStamped
@@ -70,32 +71,37 @@ class LMIMPCControl():
         self.control_command_publisher.publish(cmd)     
 
     def traj_tracking_states(self, data):
+        """
+        Stores the ackermann drive message for the next controller calculation
+
+        :param ros_ackermann_drive: the current ackermann control input
+        :type ros_ackermann_drive: ackermann_msgs.AckermannDrive
+        :return:
+        """
         self.received_inputs = True
         # set init state
         self.x = np.matrix([[data.data[5]], [data.data[8]]])
         self.curr_vel = max(data.data[10], 0.1)
-        self.cmd_vel = data.data[9]
-        self.cmd_vel_new = 2.75
+        self.cmd_vel = max(data.data[9], 0.1)
+        self.cmd_vel_new = max(data.data[18], 0.1)
+        self.steer_lookup = data.data[19]
         self.curvature_ = data.data[14]
-        #if np.abs(self.curvature_) < 0.0001:
-        #    self.curvature_ = 0.01
-        
 
     def update_controls(self): 
             
         if (self.received_inputs == True):
             if (self.formulate_vehicle_model == False):
-                #self.delta_r = atan(self.wheelbase_ * self.curvature_)
-                self.delta_r = 0.1
+                self.delta_r = atan(self.wheelbase_ * self.curvature_)
+                #self.delta_r = 0.1
                 # Kinematic Bicycle model
                 A_k = np.eye(2) + np.matrix([[0, self.cmd_vel], [0, 0]])*self.dt
                 B_k = np.matrix([[0], [self.cmd_vel/(self.wheelbase_*cos(self.delta_r)*cos(self.delta_r))]])*self.dt
-                W_k =  np.matrix([[0, 0], [0.0, -self.cmd_vel*self.delta_r/(self.wheelbase_*cos(self.delta_r)*cos(self.delta_r))]])*self.dt
+                W_k =  np.matrix([[0, 0], [0, -self.cmd_vel*self.delta_r/(self.wheelbase_*cos(self.delta_r)*cos(self.delta_r))]])*self.dt
     
-                A_k = A_k + W_k
+                A_k = A_k+ W_k 
                 # set state propagation matrices
                 self.A = A_k
-                self.B = B_k
+                self.B = B_k 
                 #self.formulate_vehicle_model = True
 
             if (self.formulate_const_LMIs == False):
@@ -125,11 +131,14 @@ class LMIMPCControl():
             # Constraints 
             self.constraints += [X_1 >> 0]
             # Initializing problem and solving
-            print(self.x)
+            #print(self.x)
 
             prob = cp.Problem(cp.Minimize(self.gamma),
                       self.constraints)
-            prob.solve(solver=cp.MOSEK, verbose=False, warm_start=True)
+            start = time.time()
+            prob.solve(solver=cp.CVXOPT, verbose=False, warm_start=True)
+            end = time.time()
+            print(end - start) 
             if prob.status not in ["infeasible", "unbounded"]:
                 # Calculating optimal input - u
                 G_val = self.G.value
